@@ -14,20 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.broker.topic;
+package org.apache.rocketmq.broker.config.v1;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+import java.io.File;
+import java.util.Map;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.RocksDBConfigManager;
+import org.apache.rocketmq.broker.topic.TopicConfigManager;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.utils.DataConverter;
 import org.apache.rocketmq.remoting.protocol.DataVersion;
-
-import java.io.File;
-import java.util.Map;
-import java.util.concurrent.ConcurrentMap;
+import org.rocksdb.CompressionType;
 
 public class RocksDBTopicConfigManager extends TopicConfigManager {
 
@@ -35,7 +36,8 @@ public class RocksDBTopicConfigManager extends TopicConfigManager {
 
     public RocksDBTopicConfigManager(BrokerController brokerController) {
         super(brokerController, false);
-        this.rocksDBConfigManager = new RocksDBConfigManager(rocksdbConfigFilePath(), brokerController.getMessageStoreConfig().getMemTableFlushIntervalMs());
+        this.rocksDBConfigManager = new RocksDBConfigManager(rocksdbConfigFilePath(), brokerController.getMessageStoreConfig().getMemTableFlushIntervalMs(),
+            CompressionType.getCompressionType(brokerController.getMessageStoreConfig().getRocksdbCompressionType()));
     }
 
     @Override
@@ -59,30 +61,32 @@ public class RocksDBTopicConfigManager extends TopicConfigManager {
     }
 
     private boolean merge() {
-        if (!brokerController.getMessageStoreConfig().isTransferMetadataJsonToRocksdb()) {
-            log.info("The switch is off, no merge operation is needed.");
-            return true;
-        }
         if (!UtilAll.isPathExists(this.configFilePath()) && !UtilAll.isPathExists(this.configFilePath() + ".bak")) {
-            log.info("json file and json back file not exist, so skip merge");
+            log.info("topic json file does not exist, so skip merge");
             return true;
         }
 
-        if (!super.load()) {
-            log.error("load topic config from json file error, startup will exit");
+        if (!super.loadDataVersion()) {
+            log.error("load json topic dataVersion error, startup will exit");
             return false;
         }
 
-        final ConcurrentMap<String, TopicConfig> topicConfigTable = this.getTopicConfigTable();
         final DataVersion dataVersion = super.getDataVersion();
         final DataVersion kvDataVersion = this.getDataVersion();
         if (dataVersion.getCounter().get() > kvDataVersion.getCounter().get()) {
+            if (!super.load()) {
+                log.error("load topic config from json file error, startup will exit");
+                return false;
+            }
+            final ConcurrentMap<String, TopicConfig> topicConfigTable = this.getTopicConfigTable();
             for (Map.Entry<String, TopicConfig> entry : topicConfigTable.entrySet()) {
                 putTopicConfig(entry.getValue());
                 log.info("import topic config to rocksdb, topic={}", entry.getValue());
             }
-            this.rocksDBConfigManager.getKvDataVersion().assignNewOne(dataVersion);
+            this.getDataVersion().assignNewOne(dataVersion);
             updateDataVersion();
+        } else {
+            log.info("dataVersion is not greater than kvDataVersion, no need to merge topic metaData, dataVersion={}, kvDataVersion={}", dataVersion, kvDataVersion);
         }
         log.info("finish read topic config from json file and merge to rocksdb");
         this.persist();
@@ -150,6 +154,7 @@ public class RocksDBTopicConfigManager extends TopicConfigManager {
         try {
             rocksDBConfigManager.updateKvDataVersion();
         } catch (Exception e) {
+            log.error("update topic config dataVersion error", e);
             throw new RuntimeException(e);
         }
     }

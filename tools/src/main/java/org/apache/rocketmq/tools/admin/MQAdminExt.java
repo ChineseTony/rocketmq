@@ -24,6 +24,7 @@ import java.util.Set;
 import org.apache.rocketmq.client.MQAdmin;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.CheckRocksdbCqWriteResult;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.PlainAccessConfig;
 import org.apache.rocketmq.common.TopicConfig;
@@ -147,6 +148,9 @@ public interface MQAdminExt extends MQAdmin {
     ConsumeStats examineConsumeStats(
         final String consumerGroup) throws RemotingException, MQClientException, InterruptedException,
         MQBrokerException;
+
+    CheckRocksdbCqWriteResult checkRocksdbCqWriteProgress(String brokerAddr, String topic, long checkStoreTime)
+        throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQClientException;
 
     ConsumeStats examineConsumeStats(final String consumerGroup,
         final String topic) throws RemotingException, MQClientException,

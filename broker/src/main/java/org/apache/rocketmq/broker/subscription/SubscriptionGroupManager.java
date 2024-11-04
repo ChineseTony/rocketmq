@@ -49,7 +49,7 @@ public class SubscriptionGroupManager extends ConfigManager {
     private ConcurrentMap<String, ConcurrentMap<String, Integer>> forbiddenTable =
         new ConcurrentHashMap<>(4);
 
-    private final DataVersion dataVersion = new DataVersion();
+    protected final DataVersion dataVersion = new DataVersion();
     protected transient BrokerController brokerController;
 
     public SubscriptionGroupManager() {
@@ -143,7 +143,7 @@ public class SubscriptionGroupManager extends ConfigManager {
         this.persist();
     }
 
-    private void updateSubscriptionGroupConfigWithoutPersist(SubscriptionGroupConfig config) {
+    protected void updateSubscriptionGroupConfigWithoutPersist(SubscriptionGroupConfig config) {
         Map<String, String> newAttributes = request(config);
         Map<String, String> currentAttributes = current(config.getGroupName());
 
@@ -332,6 +332,26 @@ public class SubscriptionGroupManager extends ConfigManager {
 
     public DataVersion getDataVersion() {
         return dataVersion;
+    }
+
+    public boolean loadDataVersion() {
+        String fileName = null;
+        try {
+            fileName = this.configFilePath();
+            String jsonString = MixAll.file2String(fileName);
+            if (jsonString != null) {
+                SubscriptionGroupManager obj = RemotingSerializable.fromJson(jsonString, SubscriptionGroupManager.class);
+                if (obj != null) {
+                    this.dataVersion.assignNewOne(obj.dataVersion);
+                    this.printLoadDataWhenFirstBoot(obj);
+                    log.info("load subGroup dataVersion success,{},{}", fileName, obj.dataVersion);
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            log.error("load subGroup dataVersion failed" + fileName, e);
+            return false;
+        }
     }
 
     public void deleteSubscriptionGroupConfig(final String groupName) {

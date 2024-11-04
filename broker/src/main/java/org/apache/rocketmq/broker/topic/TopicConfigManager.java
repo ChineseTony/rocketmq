@@ -66,7 +66,7 @@ public class TopicConfigManager extends ConfigManager {
 
     private transient final Lock topicConfigTableLock = new ReentrantLock();
     protected ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(1024);
-    private DataVersion dataVersion = new DataVersion();
+    protected DataVersion dataVersion = new DataVersion();
     protected transient BrokerController brokerController;
 
     public TopicConfigManager() {
@@ -497,7 +497,7 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
-    private void updateSingleTopicConfigWithoutPersist(final TopicConfig topicConfig) {
+    protected void updateSingleTopicConfigWithoutPersist(final TopicConfig topicConfig) {
         checkNotNull(topicConfig, "topicConfig shouldn't be null");
 
         Map<String, String> newAttributes = request(topicConfig);
@@ -635,6 +635,26 @@ public class TopicConfigManager extends ConfigManager {
     @Override
     public String encode() {
         return encode(false);
+    }
+
+    public boolean loadDataVersion() {
+        String fileName = null;
+        try {
+            fileName = this.configFilePath();
+            String jsonString = MixAll.file2String(fileName);
+            if (jsonString != null) {
+                TopicConfigSerializeWrapper topicConfigSerializeWrapper =
+                    TopicConfigSerializeWrapper.fromJson(jsonString, TopicConfigSerializeWrapper.class);
+                if (topicConfigSerializeWrapper != null) {
+                    this.dataVersion.assignNewOne(topicConfigSerializeWrapper.getDataVersion());
+                    log.info("load topic metadata dataVersion success {}, {}", fileName, topicConfigSerializeWrapper.getDataVersion());
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            log.error("load topic metadata dataVersion failed" + fileName, e);
+            return false;
+        }
     }
 
     @Override
